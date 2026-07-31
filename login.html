@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In — AI Notes</title>
+  <meta name="description" content="Sign in or register for an AI Notes account to manage your intelligent notes.">
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+</head>
+<body>
+  <div class="app-container" style="justify-content: center; align-items: center; background: var(--bg-main);">
+    
+    <div style="width: 100%; max-width: 420px; padding: 1.5rem;">
+      
+      <!-- Brand Logo Header -->
+      <div style="text-align: center; margin-bottom: 2rem;">
+        <a href="index.html" class="brand-logo" style="justify-content: center; margin-bottom: 0.5rem;">
+          <div class="brand-icon">N</div>
+          <span>AI Notes</span>
+        </a>
+        <p style="font-size: 0.9rem; color: var(--text-muted);">Minimalist & AI-Powered Note Canvas</p>
+      </div>
+
+      <!-- Auth Container Card -->
+      <div class="note-card" style="padding: 2rem;">
+        
+        <!-- Tab Toggle Header -->
+        <div style="display: flex; border-bottom: 1px solid var(--border-light); margin-bottom: 1.5rem;">
+          <button id="tab-login" class="btn" style="flex: 1; border-radius: 0; border-bottom: 2px solid var(--accent-black); font-weight: 600; padding: 0.6rem 0;">
+            Sign In
+          </button>
+          <button id="tab-register" class="btn" style="flex: 1; border-radius: 0; border-bottom: 2px solid transparent; color: var(--text-muted); padding: 0.6rem 0;">
+            Register
+          </button>
+        </div>
+
+        <!-- Auth Form -->
+        <form id="auth-form">
+          <div id="name-group" class="form-group" style="display: none;">
+            <label class="form-label" for="user-name">Full Name</label>
+            <input type="text" id="user-name" class="input-field" placeholder="Jane Doe" autocomplete="name" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="user-email">Email Address</label>
+            <input type="email" id="user-email" class="input-field" placeholder="jane@example.com" required autocomplete="email" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="user-password">Password</label>
+            <input type="password" id="user-password" class="input-field" placeholder="••••••••" required autocomplete="current-password" />
+          </div>
+
+          <button type="submit" id="submit-btn" class="btn btn-primary" style="width: 100%; padding: 0.75rem; margin-top: 0.5rem; font-size: 0.95rem;">
+            Sign In &rarr;
+          </button>
+        </form>
+
+        <div style="margin: 1.5rem 0; text-align: center; border-bottom: 1px dashed var(--border-light); line-height: 0.1em;">
+          <span style="background: var(--bg-surface); padding: 0 0.5rem; font-size: 0.75rem; color: var(--text-subtle); text-transform: uppercase;">or</span>
+        </div>
+
+        <!-- Instant Demo Access Button -->
+        <button id="guest-btn" class="btn btn-secondary" style="width: 100%; font-size: 0.88rem;">
+          ⚡ Continue as Guest (Demo Mode)
+        </button>
+
+      </div>
+
+      <div style="text-align: center; margin-top: 1.5rem; font-size: 0.8rem; color: var(--text-subtle);">
+        <a href="index.html">&larr; Back to Home</a>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script src="js/firebase.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/notes.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/app.js"></script>
+
+  <script>
+    let mode = 'login'; // 'login' or 'register'
+
+    const tabLogin = document.getElementById('tab-login');
+    const tabRegister = document.getElementById('tab-register');
+    const nameGroup = document.getElementById('name-group');
+    const submitBtn = document.getElementById('submit-btn');
+    const authForm = document.getElementById('auth-form');
+    const guestBtn = document.getElementById('guest-btn');
+
+    tabLogin.addEventListener('click', () => {
+      mode = 'login';
+      tabLogin.style.borderBottomColor = 'var(--accent-black)';
+      tabLogin.style.color = 'var(--text-main)';
+      tabLogin.style.fontWeight = '600';
+
+      tabRegister.style.borderBottomColor = 'transparent';
+      tabRegister.style.color = 'var(--text-muted)';
+      tabRegister.style.fontWeight = '400';
+
+      nameGroup.style.display = 'none';
+      submitBtn.innerHTML = 'Sign In &rarr;';
+    });
+
+    tabRegister.addEventListener('click', () => {
+      mode = 'register';
+      tabRegister.style.borderBottomColor = 'var(--accent-black)';
+      tabRegister.style.color = 'var(--text-main)';
+      tabRegister.style.fontWeight = '600';
+
+      tabLogin.style.borderBottomColor = 'transparent';
+      tabLogin.style.color = 'var(--text-muted)';
+      tabLogin.style.fontWeight = '400';
+
+      nameGroup.style.display = 'flex';
+      submitBtn.innerHTML = 'Create Account &rarr;';
+    });
+
+    authForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('user-email').value;
+      const password = document.getElementById('user-password').value;
+      const name = document.getElementById('user-name').value;
+
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Processing...';
+
+      let res;
+      if (mode === 'register') {
+        res = await Auth.register(name, email, password);
+      } else {
+        res = await Auth.login(email, password);
+      }
+
+      if (res.success) {
+        App.showToast(`Welcome back, ${res.user.name}!`);
+        setTimeout(() => window.location.href = 'dashboard.html', 400);
+      } else {
+        App.showToast(`Auth Error: ${res.error}`, '⚠️');
+        submitBtn.disabled = false;
+        submitBtn.innerText = mode === 'register' ? 'Create Account →' : 'Sign In →';
+      }
+    });
+
+    guestBtn.addEventListener('click', async () => {
+      const res = await Auth.loginAsGuest();
+      App.showToast('Entered Demo Guest Mode');
+      setTimeout(() => window.location.href = 'dashboard.html', 400);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edit Note — AI Notes</title>
+  <meta name="description" content="Create or edit your note with AI summarization and smart tag features.">
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Navbar -->
+    <header class="navbar">
+      <div class="container nav-content">
+        <div style="display: flex; align-items: center; gap: 1rem;">
+          <a href="dashboard.html" class="btn btn-secondary btn-sm">&larr; Dashboard</a>
+          <a href="dashboard.html" class="brand-logo" style="font-size: 1.1rem;">
+            <div class="brand-icon" style="width: 26px; height: 26px; font-size: 1rem;">N</div>
+            <span>AI Notes</span>
+          </a>
+        </div>
+        <div class="nav-actions">
+          <button id="open-settings-btn" class="btn-icon" aria-label="AI Config" title="AI Config">
+            ⚙️ AI Config
+          </button>
+          <button id="theme-toggle-btn" class="btn-icon" aria-label="Toggle Theme" title="Toggle Theme">
+            🌓
+          </button>
+          <button id="save-note-btn" class="btn btn-primary">
+            Save Note
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="container" style="flex: 1; padding-top: 2rem; padding-bottom: 4rem; max-width: 860px;">
+      
+      <!-- AI Assistant Control Panel -->
+      <div class="ai-toolbar">
+        <div class="ai-badge">✦ AI Tools</div>
+        <button id="ai-summarize-btn" class="btn btn-secondary btn-sm">
+          ✨ Summarize Note
+        </button>
+        <button id="ai-tags-btn" class="btn btn-secondary btn-sm">
+          🏷️ Suggest Tags
+        </button>
+        <span id="ai-status" style="font-size: 0.8rem; color: var(--text-muted); margin-left: auto;"></span>
+      </div>
+
+      <!-- AI Result Drawer / Box -->
+      <div id="ai-summary-box" class="ai-box" style="display: none;">
+        <div class="ai-box-header">
+          <h4 style="font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.4rem;">
+            <span>✦ AI Generated Summary</span>
+          </h4>
+          <button id="close-ai-summary" class="btn-icon" style="padding: 0.2rem 0.5rem;">&times;</button>
+        </div>
+        <div id="ai-summary-text" style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 1rem;"></div>
+        <button id="apply-summary-btn" class="btn btn-secondary btn-sm">Attach Summary to Note</button>
+      </div>
+
+      <!-- AI Tag Suggestions Box -->
+      <div id="ai-tags-box" class="ai-box" style="display: none;">
+        <div class="ai-box-header">
+          <h4 style="font-size: 0.95rem; font-weight: 600;">🏷️ Suggested Tags</h4>
+          <button id="close-ai-tags" class="btn-icon" style="padding: 0.2rem 0.5rem;">&times;</button>
+        </div>
+        <div id="ai-tags-list" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;"></div>
+      </div>
+
+      <!-- Main Note Form Card -->
+      <div class="note-card" style="margin-top: 1rem; padding: 2rem;">
+        
+        <!-- Note Title Input -->
+        <div class="form-group">
+          <input type="text" id="note-title" class="input-field" placeholder="Note Title..." style="font-family: var(--font-serif); font-size: 2.2rem; border: none; border-bottom: 1px solid var(--border-light); border-radius: 0; padding: 0.5rem 0;" />
+        </div>
+
+        <!-- Tag Manager Input & Pills -->
+        <div class="form-group" style="margin-bottom: 1.5rem;">
+          <label class="form-label">Tags</label>
+          <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; padding: 0.5rem; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-surface);">
+            <div id="active-tags-list" style="display: flex; flex-wrap: wrap; gap: 0.4rem;"></div>
+            <input type="text" id="tag-input" placeholder="Type tag & hit Enter..." style="flex: 1; min-width: 140px; font-family: var(--font-mono); font-size: 0.85rem; padding: 0.2rem 0.4rem;" />
+          </div>
+        </div>
+
+        <!-- Note Content Textarea -->
+        <div class="form-group">
+          <textarea id="note-content" class="textarea-field" placeholder="Start writing your thoughts here..." style="border: none; padding: 0; font-size: 1.05rem; min-height: 380px;"></textarea>
+        </div>
+
+        <!-- Note Footer Metadata -->
+        <div class="note-footer" style="margin-top: 1.5rem;">
+          <span id="timestamp-info">Draft</span>
+          <div class="note-actions">
+            <button id="delete-note-btn" class="btn btn-secondary btn-sm" style="display: none; color: #ef4444;">
+              Delete Note
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <script src="js/firebase.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/notes.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/app.js"></script>
+
+  <script>
+    let currentUser = null;
+    let currentNoteId = null;
+    let currentTags = [];
+    let currentSummary = '';
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      currentUser = await Auth.requireAuth();
+      if (!currentUser) return;
+
+      const urlParams = new URLSearchParams(window.location.search);
+      currentNoteId = urlParams.get('id');
+
+      if (currentNoteId) {
+        await loadExistingNote(currentNoteId);
+      } else {
+        document.title = 'New Note — AI Notes';
+      }
+
+      bindEditorEvents();
+    });
+
+    async function loadExistingNote(noteId) {
+      const note = await NotesAPI.getNoteById(currentUser.uid, noteId);
+      if (!note) {
+        App.showToast('Note not found');
+        setTimeout(() => window.location.href = 'dashboard.html', 500);
+        return;
+      }
+
+      document.title = `${note.title || 'Untitled'} — AI Notes`;
+      document.getElementById('note-title').value = note.title || '';
+      document.getElementById('note-content').value = note.content || '';
+      currentTags = Array.isArray(note.tags) ? [...note.tags] : [];
+      currentSummary = note.summary || '';
+
+      if (currentSummary) {
+        showSummaryBox(currentSummary);
+      }
+
+      document.getElementById('timestamp-info').innerText = `Last updated: ${App.formatDate(note.updatedAt)}`;
+      
+      const deleteBtn = document.getElementById('delete-note-btn');
+      deleteBtn.style.display = 'inline-block';
+      deleteBtn.addEventListener('click', async () => {
+        if (confirm('Delete this note permanently?')) {
+          await NotesAPI.deleteNote(currentUser.uid, noteId);
+          App.showToast('Note deleted');
+          window.location.href = 'dashboard.html';
+        }
+      });
+
+      renderTags();
+    }
+
+    function renderTags() {
+      const list = document.getElementById('active-tags-list');
+      list.innerHTML = currentTags.map(tag => `
+        <span class="tag-pill">
+          #${App.escapeHTML(tag)}
+          <span style="cursor: pointer; opacity: 0.7; margin-left: 0.2rem;" onclick="removeTag('${App.escapeHTML(tag)}')">&times;</span>
+        </span>
+      `).join('');
+    }
+
+    window.removeTag = function(tagToRemove) {
+      currentTags = currentTags.filter(t => t.toLowerCase() !== tagToRemove.toLowerCase());
+      renderTags();
+    };
+
+    function addTag(newTag) {
+      const clean = newTag.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      if (clean && !currentTags.includes(clean)) {
+        currentTags.push(clean);
+        renderTags();
+      }
+    }
+
+    function bindEditorEvents() {
+      // Tag input keypress
+      const tagInput = document.getElementById('tag-input');
+      tagInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ',') {
+          e.preventDefault();
+          addTag(tagInput.value);
+          tagInput.value = '';
+        }
+      });
+
+      // Save Note Button
+      document.getElementById('save-note-btn').addEventListener('click', () => saveNote());
+
+      // AI Summarize Button
+      document.getElementById('ai-summarize-btn').addEventListener('click', async () => {
+        const content = document.getElementById('note-content').value;
+        if (!content.trim()) {
+          App.showToast('Please enter some note content first.', '⚠️');
+          return;
+        }
+
+        const status = document.getElementById('ai-status');
+        status.innerText = '✨ AI is thinking...';
+        
+        try {
+          const summary = await AI.summarize(content);
+          showSummaryBox(summary);
+          status.innerText = '';
+        } catch (err) {
+          status.innerText = '';
+          App.showToast('AI Summarize failed', '⚠️');
+        }
+      });
+
+      // AI Tags Button
+      document.getElementById('ai-tags-btn').addEventListener('click', async () => {
+        const title = document.getElementById('note-title').value;
+        const content = document.getElementById('note-content').value;
+        
+        if (!title.trim() && !content.trim()) {
+          App.showToast('Please enter title or content first.', '⚠️');
+          return;
+        }
+
+        const status = document.getElementById('ai-status');
+        status.innerText = '🏷️ Generating tags...';
+
+        try {
+          const suggested = await AI.suggestTags(title, content);
+          showSuggestedTagsBox(suggested);
+          status.innerText = '';
+        } catch (err) {
+          status.innerText = '';
+          App.showToast('Tag suggestion failed', '⚠️');
+        }
+      });
+
+      // Close AI boxes
+      document.getElementById('close-ai-summary').addEventListener('click', () => {
+        document.getElementById('ai-summary-box').style.display = 'none';
+      });
+
+      document.getElementById('close-ai-tags').addEventListener('click', () => {
+        document.getElementById('ai-tags-box').style.display = 'none';
+      });
+
+      // Attach Summary Button
+      document.getElementById('apply-summary-btn').addEventListener('click', () => {
+        App.showToast('Summary attached to note');
+      });
+    }
+
+    function showSummaryBox(summary) {
+      currentSummary = summary;
+      const box = document.getElementById('ai-summary-box');
+      document.getElementById('ai-summary-text').innerText = summary;
+      box.style.display = 'block';
+    }
+
+    function showSuggestedTagsBox(tags) {
+      const box = document.getElementById('ai-tags-box');
+      const list = document.getElementById('ai-tags-list');
+      
+      list.innerHTML = tags.map(tag => `
+        <button class="tag-pill" onclick="addSuggestedTag('${App.escapeHTML(tag)}')">
+          + #${App.escapeHTML(tag)}
+        </button>
+      `).join('');
+
+      box.style.display = 'block';
+    }
+
+    window.addSuggestedTag = function(tag) {
+      addTag(tag);
+      App.showToast(`Added #${tag}`);
+    };
+
+    async function saveNote() {
+      const title = document.getElementById('note-title').value;
+      const content = document.getElementById('note-content').value;
+
+      const noteData = {
+        title,
+        content,
+        tags: currentTags,
+        summary: currentSummary
+      };
+
+      const saveBtn = document.getElementById('save-note-btn');
+      saveBtn.disabled = true;
+      saveBtn.innerText = 'Saving...';
+
+      let res;
+      if (currentNoteId) {
+        res = await NotesAPI.updateNote(currentUser.uid, currentNoteId, noteData);
+      } else {
+        res = await NotesAPI.createNote(currentUser.uid, noteData);
+        if (res.success && res.note) {
+          currentNoteId = res.note.id;
+        }
+      }
+
+      saveBtn.disabled = false;
+      saveBtn.innerText = 'Save Note';
+
+      if (res.success) {
+        App.showToast('Note saved successfully!');
+        setTimeout(() => window.location.href = 'dashboard.html', 500);
+      } else {
+        App.showToast('Failed to save note: ' + res.error, '⚠️');
+      }
+    }
+  </script>
+</body>
+</html>

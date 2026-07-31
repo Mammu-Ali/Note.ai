@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Notes — Minimalist AI-Powered Note Taking</title>
+  <meta name="description" content="A simple, minimalist web application for creating, organizing, and summarizing notes with AI power.">
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Navbar -->
+    <header class="navbar">
+      <div class="container nav-content">
+        <a href="index.html" class="brand-logo">
+          <div class="brand-icon">N</div>
+          <span>AI Notes</span>
+        </a>
+        <div class="nav-actions">
+          <button id="theme-toggle-btn" class="btn-icon" aria-label="Toggle Theme" title="Toggle Theme">
+            🌓
+          </button>
+          <a href="login.html" class="btn btn-secondary">Sign In</a>
+          <a href="dashboard.html" class="btn btn-primary">Open App &rarr;</a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Hero Section -->
+    <main class="container" style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 4rem 1.5rem; text-align: center;">
+      <div style="max-width: 720px;">
+        <div class="ai-badge" style="margin-bottom: 1.5rem;">✦ AI-Enhanced Productivity</div>
+        <h1 class="display-title" style="margin-bottom: 1.5rem;">
+          Distill your thoughts with minimalist clarity.
+        </h1>
+        <p style="font-size: 1.15rem; color: var(--text-muted); margin-bottom: 2.5rem; line-height: 1.8;">
+          AI Notes gives you a paper-inspired canvas for your ideas. Effortlessly write, organize with tags, and let AI summarize long notes and suggest smart tags in one click.
+        </p>
+        <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+          <a href="dashboard.html" class="btn btn-primary" style="padding: 0.8rem 2rem; font-size: 1rem;">
+            Get Started Now &rarr;
+          </a>
+          <a href="login.html" class="btn btn-secondary" style="padding: 0.8rem 2rem; font-size: 1rem;">
+            Sign In / Register
+          </a>
+        </div>
+
+        <!-- Minimal Features Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-top: 5rem; text-align: left;">
+          <div style="padding: 1.2rem; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-surface);">
+            <div style="font-family: var(--font-mono); font-size: 0.8rem; text-transform: uppercase; color: var(--text-subtle); margin-bottom: 0.4rem;">01. Notes</div>
+            <h3 style="font-size: 1.1rem; margin-bottom: 0.4rem;">Paper Cards</h3>
+            <p style="font-size: 0.88rem; color: var(--text-muted);">Clean, distraction-free typography designed for focused writing and reading.</p>
+          </div>
+          <div style="padding: 1.2rem; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-surface);">
+            <div style="font-family: var(--font-mono); font-size: 0.8rem; text-transform: uppercase; color: var(--text-subtle); margin-bottom: 0.4rem;">02. Intelligence</div>
+            <h3 style="font-size: 1.1rem; margin-bottom: 0.4rem;">AI Summaries</h3>
+            <p style="font-size: 0.88rem; color: var(--text-muted);">Instantly extract core bullet points from lengthy documents with Gemini or OpenAI.</p>
+          </div>
+          <div style="padding: 1.2rem; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-surface);">
+            <div style="font-family: var(--font-mono); font-size: 0.8rem; text-transform: uppercase; color: var(--text-subtle); margin-bottom: 0.4rem;">03. Organization</div>
+            <h3 style="font-size: 1.1rem; margin-bottom: 0.4rem;">Smart Tagging</h3>
+            <p style="font-size: 0.88rem; color: var(--text-muted);">Filter notes instantly with automatic AI tag suggestions and interactive tag pills.</p>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer style="border-top: 1px solid var(--border-light); padding: 1.5rem 0; font-size: 0.85rem; color: var(--text-subtle); text-align: center;">
+      <div class="container">
+        AI Notes &copy; 2026 — Minimalist AI Note-Taking Application.
+      </div>
+    </footer>
+  </div>
+
+  <script src="js/firebase.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/notes.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    // Automatic redirect check if logged in
+    document.addEventListener('DOMContentLoaded', async () => {
+      const user = await Auth.getCurrentUser();
+      if (user) {
+        // Optional smooth prompt or user navigation
+      }
+    });
+  </script>
+</body>
+</html>
