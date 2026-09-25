@@ -87,7 +87,7 @@
           <label class="form-label">Tags</label>
           <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; padding: 0.5rem; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-surface);">
             <div id="active-tags-list" style="display: flex; flex-wrap: wrap; gap: 0.4rem;"></div>
-            <input type="text" id="tag-input" placeholder="Type tag & hit Enter..." style="flex: 1; min-width: 140px; font-family: var(--font-mono); font-size: 0.85rem; padding: 0.2rem 0.4rem;" />
+            <input type="text" id="tag-input" name="app_note_tag_entry" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" placeholder="Type tag & hit Enter..." style="flex: 1; min-width: 140px; font-family: var(--font-mono); font-size: 0.85rem; padding: 0.2rem 0.4rem;" />
           </div>
         </div>
 
@@ -123,10 +123,36 @@
     let currentNoteId = null;
     let currentTags = [];
     let currentSummary = '';
+    let isDirty = false;
+
+    // Helper: Detect email addresses
+    function isEmailAddress(str) {
+      if (!str || typeof str !== 'string') return false;
+      return str.includes('@') || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str.trim());
+    }
+
+    // Track unsaved changes
+    window.addEventListener('beforeunload', (e) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
 
     document.addEventListener('DOMContentLoaded', async () => {
       currentUser = await Auth.requireAuth();
       if (!currentUser) return;
+
+      // Ensure tag input field starts clean and immune to password manager autofill
+      const tagInput = document.getElementById('tag-input');
+      if (tagInput) {
+        tagInput.value = '';
+        setTimeout(() => {
+          if (tagInput.value && (isEmailAddress(tagInput.value) || (currentUser?.email && tagInput.value.toLowerCase().includes(currentUser.email.toLowerCase())))) {
+            tagInput.value = '';
+          }
+        }, 120);
+      }
 
       const urlParams = new URLSearchParams(window.location.search);
       currentNoteId = urlParams.get('id');
@@ -135,6 +161,8 @@
         await loadExistingNote(currentNoteId);
       } else {
         document.title = 'New Note — AI Notes';
+        currentTags = [];
+        renderTags();
       }
 
       bindEditorEvents();
@@ -143,7 +171,7 @@
     async function loadExistingNote(noteId) {
       const note = await NotesAPI.getNoteById(currentUser.uid, noteId);
       if (!note) {
-        App.showToast('Note not found');
+        App.showToast('Note not found or permission denied');
         setTimeout(() => window.location.href = 'dashboard.html', 500);
         return;
       }
@@ -151,7 +179,11 @@
       document.title = `${note.title || 'Untitled'} — AI Notes`;
       document.getElementById('note-title').value = note.title || '';
       document.getElementById('note-content').value = note.content || '';
-      currentTags = Array.isArray(note.tags) ? [...note.tags] : [];
+      
+      // Sanitize: never load user email or invalid entries as tags
+      currentTags = (Array.isArray(note.tags) ? note.tags : [])
+        .filter(t => typeof t === 'string' && !isEmailAddress(t) && (!currentUser?.email || !t.toLowerCase().includes(currentUser.email.toLowerCase())));
+      
       currentSummary = note.summary || '';
 
       if (currentSummary) {
@@ -162,15 +194,21 @@
       
       const deleteBtn = document.getElementById('delete-note-btn');
       deleteBtn.style.display = 'inline-block';
-      deleteBtn.addEventListener('click', async () => {
+      deleteBtn.onclick = async () => {
         if (confirm('Delete this note permanently?')) {
-          await NotesAPI.deleteNote(currentUser.uid, noteId);
-          App.showToast('Note deleted');
-          window.location.href = 'dashboard.html';
+          const res = await NotesAPI.deleteNote(currentUser.uid, noteId);
+          if (res && res.success) {
+            isDirty = false;
+            App.showToast('Note deleted');
+            window.location.href = 'dashboard.html';
+          } else {
+            App.showToast('Failed to delete note: ' + (res?.error || 'Unknown error'), '⚠️');
+          }
         }
-      });
+      };
 
       renderTags();
+      isDirty = false;
     }
 
     function renderTags() {
@@ -178,31 +216,88 @@
       list.innerHTML = currentTags.map(tag => `
         <span class="tag-pill">
           #${App.escapeHTML(tag)}
-          <span style="cursor: pointer; opacity: 0.7; margin-left: 0.2rem;" onclick="removeTag('${App.escapeHTML(tag)}')">&times;</span>
+          <span class="remove-tag-btn" data-tag="${App.escapeHTML(tag)}" style="cursor: pointer; opacity: 0.7; margin-left: 0.2rem;" title="Remove tag">&times;</span>
         </span>
       `).join('');
     }
 
-    window.removeTag = function(tagToRemove) {
+    function removeTag(tagToRemove) {
       currentTags = currentTags.filter(t => t.toLowerCase() !== tagToRemove.toLowerCase());
+      isDirty = true;
       renderTags();
-    };
+    }
 
     function addTag(newTag) {
-      const clean = newTag.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-      if (clean && !currentTags.includes(clean)) {
+      if (!newTag || typeof newTag !== 'string') return;
+      
+      // Security & Data integrity: NEVER allow email addresses or user accounts to become tags
+      if (isEmailAddress(newTag)) return;
+      if (currentUser?.email && newTag.toLowerCase().includes(currentUser.email.toLowerCase())) return;
+
+      const clean = newTag.trim().replace(/^#+/, '').replace(/[^a-zA-Z0-9_-]/g, '');
+      if (!clean) return;
+
+      const lower = clean.toLowerCase();
+      if (!currentTags.some(t => t.toLowerCase() === lower)) {
         currentTags.push(clean);
+        isDirty = true;
         renderTags();
       }
     }
 
     function bindEditorEvents() {
+      // Dirty state listeners
+      document.getElementById('note-title').addEventListener('input', () => { isDirty = true; });
+      document.getElementById('note-content').addEventListener('input', () => { isDirty = true; });
+
+      // Safe event delegation for removing active tags (XSS prevention)
+      document.getElementById('active-tags-list').addEventListener('click', (e) => {
+        const btn = e.target.closest('.remove-tag-btn');
+        if (btn) {
+          const tag = btn.getAttribute('data-tag');
+          if (tag) removeTag(tag);
+        }
+      });
+
+      // Event delegation for Suggested Tags (Individual Add & Attach All Tags)
+      document.getElementById('ai-tags-list').addEventListener('click', (e) => {
+        if (e.target.closest('#apply-all-tags-btn')) {
+          const btns = document.querySelectorAll('.add-suggested-tag-btn');
+          btns.forEach(b => {
+            const tag = b.getAttribute('data-tag');
+            if (tag) addTag(tag);
+          });
+          App.showToast('All suggested tags attached!');
+          document.getElementById('ai-tags-box').style.display = 'none';
+          return;
+        }
+
+        const btn = e.target.closest('.add-suggested-tag-btn');
+        if (btn) {
+          const tag = btn.getAttribute('data-tag');
+          if (tag) {
+            addTag(tag);
+            App.showToast(`Added #${tag}`);
+          }
+        }
+      });
+
       // Tag input keypress
       const tagInput = document.getElementById('tag-input');
       tagInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ',') {
           e.preventDefault();
-          addTag(tagInput.value);
+          const val = tagInput.value.trim();
+          if (val && !isEmailAddress(val)) {
+            addTag(val);
+          }
+          tagInput.value = '';
+        }
+      });
+
+      // Clear any accidental paste of email
+      tagInput.addEventListener('input', () => {
+        if (isEmailAddress(tagInput.value) || (currentUser?.email && tagInput.value.includes(currentUser.email))) {
           tagInput.value = '';
         }
       });
@@ -213,21 +308,33 @@
       // AI Summarize Button
       document.getElementById('ai-summarize-btn').addEventListener('click', async () => {
         const content = document.getElementById('note-content').value;
+        const title = document.getElementById('note-title').value;
         if (!content.trim()) {
           App.showToast('Please enter some note content first.', '⚠️');
           return;
         }
 
         const status = document.getElementById('ai-status');
-        status.innerText = '✨ AI is thinking...';
+        status.innerText = '✨ AI is analyzing your note...';
         
         try {
           const summary = await AI.summarize(content);
           showSummaryBox(summary);
+
+          // Auto-generate suggested tags from note content alongside summary
+          try {
+            const suggested = await AI.suggestTags(title, content);
+            if (suggested && suggested.length > 0) {
+              showSuggestedTagsBox(suggested);
+            }
+          } catch (tagErr) {
+            console.warn("Auto tag suggestion with summary skipped:", tagErr);
+          }
+
           status.innerText = '';
         } catch (err) {
           status.innerText = '';
-          App.showToast('AI Summarize failed', '⚠️');
+          App.showToast('AI Summarize failed: ' + err.message, '⚠️');
         }
       });
 
@@ -242,7 +349,7 @@
         }
 
         const status = document.getElementById('ai-status');
-        status.innerText = '🏷️ Generating tags...';
+        status.innerText = '🏷️ AI is generating tags...';
 
         try {
           const suggested = await AI.suggestTags(title, content);
@@ -250,7 +357,7 @@
           status.innerText = '';
         } catch (err) {
           status.innerText = '';
-          App.showToast('Tag suggestion failed', '⚠️');
+          App.showToast('Tag suggestion failed: ' + err.message, '⚠️');
         }
       });
 
@@ -263,16 +370,37 @@
         document.getElementById('ai-tags-box').style.display = 'none';
       });
 
-      // Attach Summary Button
+      // Attach Summary Button — cleanly appends generated summary without duplicate pollution
       document.getElementById('apply-summary-btn').addEventListener('click', () => {
-        App.showToast('Summary attached to note');
+        if (!currentSummary) return;
+        const noteContent = document.getElementById('note-content');
+        const existing = noteContent.value.trim();
+
+        if (existing.includes(currentSummary)) {
+          App.showToast('Summary is already attached to this note.');
+          document.getElementById('ai-summary-box').style.display = 'none';
+          return;
+        }
+
+        const separator = existing ? '\n\n---\n\n' : '';
+        noteContent.value = existing + separator + currentSummary;
+        isDirty = true;
+        App.showToast('Summary attached to note ✔');
+        document.getElementById('ai-summary-box').style.display = 'none';
       });
     }
 
     function showSummaryBox(summary) {
       currentSummary = summary;
       const box = document.getElementById('ai-summary-box');
-      document.getElementById('ai-summary-text').innerText = summary;
+      document.getElementById('ai-summary-text').innerHTML =
+        summary
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;')
+          .replace(/\n/g, '<br>');
       box.style.display = 'block';
     }
 
@@ -280,28 +408,38 @@
       const box = document.getElementById('ai-tags-box');
       const list = document.getElementById('ai-tags-list');
       
-      list.innerHTML = tags.map(tag => `
-        <button class="tag-pill" onclick="addSuggestedTag('${App.escapeHTML(tag)}')">
+      const validTags = (Array.isArray(tags) ? tags : []).filter(t => !isEmailAddress(t));
+
+      if (validTags.length === 0) {
+        list.innerHTML = `<span style="font-size: 0.85rem; color: var(--text-muted); font-style: italic;">No tags suggested yet. Add more content to your note.</span>`;
+        box.style.display = 'block';
+        return;
+      }
+
+      list.innerHTML = validTags.map(tag => `
+        <button type="button" class="tag-pill add-suggested-tag-btn" data-tag="${App.escapeHTML(tag)}">
           + #${App.escapeHTML(tag)}
         </button>
-      `).join('');
+      `).join('') + `
+        <button type="button" id="apply-all-tags-btn" class="btn btn-secondary btn-sm" style="margin-left: 0.5rem; font-size: 0.78rem;">
+          + Attach All Tags
+        </button>
+      `;
 
       box.style.display = 'block';
     }
-
-    window.addSuggestedTag = function(tag) {
-      addTag(tag);
-      App.showToast(`Added #${tag}`);
-    };
 
     async function saveNote() {
       const title = document.getElementById('note-title').value;
       const content = document.getElementById('note-content').value;
 
+      // Filter out any email or invalid tag strings before persisting
+      const sanitizedTags = currentTags.filter(t => !isEmailAddress(t) && (!currentUser?.email || !t.toLowerCase().includes(currentUser.email.toLowerCase())));
+
       const noteData = {
         title,
         content,
-        tags: currentTags,
+        tags: sanitizedTags,
         summary: currentSummary
       };
 
@@ -316,6 +454,25 @@
         res = await NotesAPI.createNote(currentUser.uid, noteData);
         if (res.success && res.note) {
           currentNoteId = res.note.id;
+          // Update URL query parameter smoothly without reload
+          window.history.replaceState(null, '', `note.html?id=${encodeURIComponent(currentNoteId)}`);
+          document.title = `${title || 'Untitled'} — AI Notes`;
+          
+          // Show delete button now that note exists
+          const deleteBtn = document.getElementById('delete-note-btn');
+          deleteBtn.style.display = 'inline-block';
+          deleteBtn.onclick = async () => {
+            if (confirm('Delete this note permanently?')) {
+              const delRes = await NotesAPI.deleteNote(currentUser.uid, currentNoteId);
+              if (delRes && delRes.success) {
+                isDirty = false;
+                App.showToast('Note deleted');
+                window.location.href = 'dashboard.html';
+              } else {
+                App.showToast('Failed to delete note: ' + (delRes?.error || 'Unknown error'), '⚠️');
+              }
+            }
+          };
         }
       }
 
@@ -323,10 +480,11 @@
       saveBtn.innerText = 'Save Note';
 
       if (res.success) {
+        isDirty = false;
+        document.getElementById('timestamp-info').innerText = 'Last updated: Just now';
         App.showToast('Note saved successfully!');
-        setTimeout(() => window.location.href = 'dashboard.html', 500);
       } else {
-        App.showToast('Failed to save note: ' + res.error, '⚠️');
+        App.showToast('Failed to save note: ' + (res.error || 'Unknown error'), '⚠️');
       }
     }
   </script>

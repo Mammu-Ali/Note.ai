@@ -100,23 +100,57 @@
     let activeTag = null;
     let searchQuery = '';
 
+    // Debounce utility to prevent UI lag on high-frequency search input
+    function debounce(func, delay = 250) {
+      let timer;
+      return function(...args) {
+        clearTimeout(timer);
+        timer = setTimeout(() => func.apply(this, args), delay);
+      };
+    }
+
     document.addEventListener('DOMContentLoaded', async () => {
       currentUser = await Auth.requireAuth();
       if (!currentUser) return;
 
-      // Update UI greeting
+      // Update UI greeting safely
       const greeting = document.getElementById('user-greeting');
-      greeting.innerText = `@${currentUser.name}`;
+      greeting.textContent = `@${currentUser.name}`;
       greeting.style.display = 'inline-block';
 
       // Logout handler
       document.getElementById('logout-btn').addEventListener('click', () => Auth.logout());
 
-      // Search handler
+      // Debounced search handler
       const searchInput = document.getElementById('search-input');
-      searchInput.addEventListener('input', (e) => {
-        searchQuery = e.target.value;
+      const debouncedSearch = debounce((val) => {
+        searchQuery = val;
         renderNotes();
+      }, 250);
+
+      searchInput.addEventListener('input', (e) => {
+        debouncedSearch(e.target.value);
+      });
+
+      // Event delegation for tag filters container (XSS prevention)
+      const tagContainer = document.getElementById('tag-filters-container');
+      tagContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-tag]');
+        if (!btn) return;
+        const tag = btn.getAttribute('data-tag');
+        selectTag(tag === '__all__' ? null : tag);
+      });
+
+      // Event delegation for note cards actions (delete button XSS prevention)
+      const grid = document.getElementById('notes-grid');
+      grid.addEventListener('click', async (e) => {
+        const delBtn = e.target.closest('.delete-note-btn');
+        if (delBtn) {
+          const noteId = delBtn.getAttribute('data-id');
+          if (noteId) {
+            await confirmDeleteNote(noteId);
+          }
+        }
       });
 
       // Load Notes
@@ -134,7 +168,8 @@
       const tagsWithCounts = NotesAPI.getTagsWithCounts(allNotes);
 
       let html = `
-        <button class="tag-pill ${!activeTag ? 'active' : ''}" onclick="selectTag(null)">
+        <span style="font-size: 0.8rem; font-family: var(--font-mono); color: var(--text-subtle); text-transform: uppercase;">Filter by Tag:</span>
+        <button class="tag-pill ${!activeTag ? 'active' : ''}" data-tag="__all__">
           All (${allNotes.length})
         </button>
       `;
@@ -142,8 +177,8 @@
       tagsWithCounts.forEach(t => {
         const isActive = activeTag && activeTag.toLowerCase() === t.name.toLowerCase();
         html += `
-          <button class="tag-pill ${isActive ? 'active' : ''}" onclick="selectTag('${t.name}')">
-            #${t.name} (${t.count})
+          <button class="tag-pill ${isActive ? 'active' : ''}" data-tag="${App.escapeHTML(t.name)}">
+            #${App.escapeHTML(t.name)} (${t.count})
           </button>
         `;
       });
@@ -151,11 +186,11 @@
       container.innerHTML = html;
     }
 
-    window.selectTag = function(tag) {
+    function selectTag(tag) {
       activeTag = tag;
       renderTagFilters();
       renderNotes();
-    };
+    }
 
     function renderNotes() {
       const grid = document.getElementById('notes-grid');
@@ -180,9 +215,10 @@
         const tagsHTML = (note.tags || []).map(t => `<span class="tag-pill">#${App.escapeHTML(t)}</span>`).join('');
         const summaryBadge = note.summary ? `<div class="note-summary-badge">✦ ${App.escapeHTML(note.summary)}</div>` : '';
         const formattedDate = App.formatDate(note.updatedAt);
+        const escapedId = App.escapeHTML(note.id);
 
         return `
-          <div class="note-card" id="note-card-${note.id}">
+          <div class="note-card" id="note-card-${escapedId}">
             <div>
               <div class="note-header">
                 <h2 class="note-title">${App.escapeHTML(note.title || 'Untitled')}</h2>
@@ -196,8 +232,8 @@
               <div class="note-footer">
                 <span>${formattedDate}</span>
                 <div class="note-actions">
-                  <a href="note.html?id=${note.id}" class="btn btn-secondary btn-sm" title="Edit Note">Edit</a>
-                  <button class="btn btn-secondary btn-sm" onclick="confirmDeleteNote('${note.id}')" title="Delete Note">🗑️</button>
+                  <a href="note.html?id=${encodeURIComponent(note.id)}" class="btn btn-secondary btn-sm" title="Edit Note">Edit</a>
+                  <button class="btn btn-secondary btn-sm delete-note-btn" data-id="${escapedId}" title="Delete Note">🗑️</button>
                 </div>
               </div>
             </div>
@@ -206,15 +242,20 @@
       }).join('');
     }
 
-    window.confirmDeleteNote = async function(noteId) {
+    async function confirmDeleteNote(noteId) {
       if (confirm('Are you sure you want to delete this note?')) {
         const res = await NotesAPI.deleteNote(currentUser.uid, noteId);
-        if (res.success) {
+        if (res && res.success) {
           App.showToast('Note deleted');
-          await loadNotes();
+          // In-memory update saves an unnecessary collection re-read
+          allNotes = allNotes.filter(n => n.id !== noteId);
+          renderTagFilters();
+          renderNotes();
+        } else {
+          App.showToast('Failed to delete note: ' + (res?.error || 'Unknown error'), '⚠️');
         }
       }
-    };
+    }
   </script>
 </body>
 </html>

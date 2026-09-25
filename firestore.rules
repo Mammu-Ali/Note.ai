@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // User profile collection rules
+    // Users can only read and write their own profile document
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Notes collection rules
+    // Enforces strict isolation: users can only read, create, update, and delete their own notes
+    match /notes/{noteId} {
+      // Must be authenticated and assign own uid as owner
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      
+      // Must be authenticated and must match document owner
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+  }
+}

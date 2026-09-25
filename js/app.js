@@ -133,10 +133,19 @@ const App = {
     });
   },
 
-  // Utility: Date Formatter
-  formatDate(isoString) {
-    if (!isoString) return '';
-    const date = new Date(isoString);
+  // Utility: Date Formatter (supports Firestore Timestamps, Date objects, and ISO strings)
+  formatDate(val) {
+    if (!val) return '';
+    let date;
+    if (val && typeof val.toDate === 'function') {
+      date = val.toDate();
+    } else if (val instanceof Date) {
+      date = val;
+    } else {
+      date = new Date(val);
+    }
+
+    if (isNaN(date.getTime())) return '';
     const now = new Date();
     const diffHours = Math.abs(now - date) / 3600000;
 

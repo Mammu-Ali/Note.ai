@@ -17,8 +17,11 @@ const Auth = {
               email: user.email
             });
           } else {
-            resolve(window.LocalStore.getUser());
+            resolve(null);
           }
+        }, (err) => {
+          console.error("Auth state check error:", err);
+          resolve(null);
         });
       });
     }
@@ -31,13 +34,17 @@ const Auth = {
       try {
         const cred = await window.firebaseAuth.createUserWithEmailAndPassword(email, password);
         await cred.user.updateProfile({ displayName: name });
-        // Store in Firestore users collection
+        // Store in Firestore users collection (if available and permitted)
         if (window.firebaseDB) {
-          await window.firebaseDB.collection('users').doc(cred.user.uid).set({
-            name: name,
-            email: email,
-            createdAt: new Date().toISOString()
-          });
+          try {
+            await window.firebaseDB.collection('users').doc(cred.user.uid).set({
+              name: name,
+              email: email,
+              createdAt: new Date().toISOString()
+            });
+          } catch (dbErr) {
+            console.warn("Firestore user profile save skipped/failed:", dbErr.message);
+          }
         }
         const userObj = { uid: cred.user.uid, name, email };
         window.LocalStore.setUser(userObj);
@@ -86,6 +93,13 @@ const Auth = {
 
   // Instant Guest / Demo Sign-in
   async loginAsGuest() {
+    if (window.isFirebaseLive && window.firebaseAuth) {
+      try {
+        await window.firebaseAuth.signOut();
+      } catch (e) {
+        // ignore signout errors when switching to guest mode
+      }
+    }
     const guestUser = {
       uid: 'demo_guest',
       name: 'Guest Explorer',

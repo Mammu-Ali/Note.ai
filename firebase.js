@@ -1,9 +1,9 @@
 /**
- * Firebase Configuration File (firebase.js)
- * PRD Top-level configuration module
+ * Firebase Configuration & Storage Entry
+ * Note: Browser HTML entry files load js/firebase.js.
+ * This root file provides an explicit pointer to avoid developer ambiguity.
  */
-
-// Import / Forward to js/firebase.js logic
-if (typeof window !== 'undefined' && !window.firebaseDB) {
-  // Ensure js/firebase.js initialization is linked
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = require('./js/firebase.js');
 }
+

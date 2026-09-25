@@ -5,12 +5,13 @@
 
 // Firebase Configuration Object (Replace with your Firebase project credentials)
 const firebaseConfig = {
-  apiKey: "YOUR_FIREBASE_API_KEY",
-  authDomain: "ai-notes-demo.firebaseapp.com",
-  projectId: "ai-notes-demo",
-  storageBucket: "ai-notes-demo.appspot.com",
-  messagingSenderId: "1234567890",
-  appId: "1:1234567890:web:abcdef123456"
+  apiKey: "AIzaSyC0znoknS_CIpbaFZXTVMi87thfqsOy9pY",
+  authDomain: "noteai-193ae.firebaseapp.com",
+  projectId: "noteai-193ae",
+  storageBucket: "noteai-193ae.firebasestorage.app",
+  messagingSenderId: "993695811043",
+  appId: "1:993695811043:web:3c0f250cb46c5bb0b94cd6",
+  measurementId: "G-N8QSXFJ9S1"
 };
 
 // State flag to track whether live Firebase credentials have been configured
