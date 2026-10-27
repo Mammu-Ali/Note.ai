@@ -4,10 +4,11 @@
  */
 
 const AI = {
-  // Retrieve user API Key & Provider from localStorage
+  // Retrieve user API Key & Provider from localStorage or local config.js
   getAIConfig() {
+    const configKey = (typeof window !== 'undefined' && window.AI_CONFIG?.GEMINI_API_KEY) || '';
     return {
-      key: localStorage.getItem('ainotes_ai_key') || '',
+      key: localStorage.getItem('ainotes_ai_key') || configKey,
       provider: localStorage.getItem('ainotes_ai_provider') || 'gemini' // 'gemini' or 'openai'
     };
   },
@@ -79,9 +80,44 @@ const AI = {
   },
 
   /* --- Gemini API Handlers --- */
-  async callGeminiSummary(apiKey, content) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  async _callGemini(apiKey, prompt) {
+    const models = ['gemini-flash-lite-latest', 'gemini-flash-latest', 'gemini-2.5-flash'];
+    let lastError = null;
 
+    for (const model of models) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }]
+          })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
+          return data.candidates[0].content.parts[0].text.trim();
+        }
+
+        if (data.error) {
+          lastError = new Error(`Gemini API (${model}): ${data.error.message || response.statusText}`);
+          if (data.error.code === 404 || data.error.code === 503) {
+            console.warn(`Gemini model ${model} unavailable (${data.error.code}), trying next model...`);
+            continue;
+          }
+          throw lastError;
+        }
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error('Gemini returned an empty response.');
+  },
+
+  async callGeminiSummary(apiKey, content) {
     const prompt = `You are a precise note summarization assistant.
 
 Analyze the following note carefully and return a structured summary using EXACTLY this format:
@@ -106,29 +142,10 @@ Note to summarize:
 ${content}
 """`;
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }]
-      })
-    });
-
-    const data = await response.json();
-
-    if (!response.ok || data.error) {
-      throw new Error(`Gemini API Error: ${data.error?.message || response.statusText}`);
-    }
-
-    if (!data.candidates || !data.candidates[0]?.content?.parts?.[0]?.text) {
-      throw new Error('Gemini returned an empty response.');
-    }
-
-    return data.candidates[0].content.parts[0].text.trim();
+    return await this._callGemini(apiKey, prompt);
   },
 
   async callGeminiTags(apiKey, title, content) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
     const prompt = `You are a tag suggestion assistant for a note-taking app.
 
 Analyze the note below and suggest 3 to 6 relevant tags.
@@ -151,25 +168,7 @@ ${content || '(empty)'}
 
 Respond with only the comma-separated tags:`;
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }]
-      })
-    });
-
-    const data = await response.json();
-
-    if (!response.ok || data.error) {
-      throw new Error(`Gemini API Error: ${data.error?.message || response.statusText}`);
-    }
-
-    if (!data.candidates || !data.candidates[0]?.content?.parts?.[0]?.text) {
-      throw new Error('Gemini returned an empty response.');
-    }
-
-    const rawTags = data.candidates[0].content.parts[0].text.trim();
+    const rawTags = await this._callGemini(apiKey, prompt);
     return this._parseTags(rawTags);
   },
 
